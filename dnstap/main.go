@@ -20,16 +20,21 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"strings"
 	"net"
 	"os"
 	"os/signal"
 	"runtime"
 	"syscall"
 
+/*
 	"github.com/dnstap/golang-dnstap"
+*/
+	"github.com/st3930/golang-dnstap"
 )
 
 var (
+	flagConfigFile = flag.String("c", "", "use config file. other option disable, when this usage")
 	flagReadTcp    = flag.String("l", "", "read dnstap payloads from tcp/ip")
 	flagReadFile   = flag.String("r", "", "read dnstap payloads from file")
 	flagReadSock   = flag.String("u", "", "read dnstap payloads from unix socket")
@@ -60,15 +65,22 @@ Quiet text output format mnemonics:
 `)
 }
 
-func outputOpener(fname string, text, yaml, json, doAppend bool) func() dnstap.Output {
+func outputOpener(file dnstap.OutputConfig, kafka dnstap.KafkaConfig) func() dnstap.Output {
 	return func() dnstap.Output {
 		var o dnstap.Output
 		var err error
-		if text {
+
+		fname    := file.Path
+		format   := strings.ToLower(file.Format)
+		doAppend := file.Append
+
+		if kafka.Brokers != nil {
+			o, err = dnstap.NewKafkaOutput(kafka, dnstap.KafkaFormat)
+		} else if format == "text" {
 			o, err = dnstap.NewTextOutputFromFilename(fname, dnstap.TextFormat, doAppend)
-		} else if yaml {
+		} else if format == "yaml" {
 			o, err = dnstap.NewTextOutputFromFilename(fname, dnstap.YamlFormat, doAppend)
-		} else if json {
+		} else if format == "json" {
 			o, err = dnstap.NewTextOutputFromFilename(fname, dnstap.JsonFormat, doAppend)
 		} else {
 			o, err = dnstap.NewFrameStreamOutputFromFilename(fname)
@@ -119,59 +131,36 @@ func main() {
 	log.SetFlags(0)
 	flag.Usage = usage
 
-	// Handle command-line arguments.
+	// Handle command-line arguments & toml config.
 	flag.Parse()
-
-	if *flagReadFile == "" && *flagReadSock == "" && *flagReadTcp == "" {
-		fmt.Fprintf(os.Stderr, "dnstap: Error: no inputs specified.\n")
-		os.Exit(1)
-	}
-
-	if *flagWriteFile == "-" {
-		if *flagQuietText == false && *flagYamlText == false && *flagJsonText == false {
-			*flagQuietText = true
-		}
-	}
-
-	if *flagAppendFile == true {
-		if *flagWriteFile == "-" || *flagWriteFile == "" {
-			fmt.Fprintf(os.Stderr, "dnstap: Error: -a must specify the file output path.\n")
-			os.Exit(1)
-		}
-	}
-	if *flagYamlText == true && *flagJsonText == true {
-		fmt.Fprintf(os.Stderr, "dnstap: Error: specify exactly one of -y or -j.\n")
-		os.Exit(1)
-	}
-
-	if *flagReadFile != "" && *flagReadSock != "" && *flagReadTcp != "" {
-		fmt.Fprintf(os.Stderr, "dnstap: Error: specify exactly one of -r, -u or -l.\n")
-		os.Exit(1)
-	}
+	config, err := dnstap.NewLoadConfig(*flagConfigFile, *flagReadTcp, *flagReadFile, *flagReadSock, *flagWriteFile, *flagAppendFile, *flagQuietText, *flagYamlText, *flagJsonText)
 
 	// Start the output loop.
 	output := make(chan []byte, 1)
-	opener := outputOpener(*flagWriteFile, *flagQuietText, *flagYamlText, *flagJsonText, *flagAppendFile)
+	opener := outputOpener(config.OutputFile, config.OutputKafka)
 	outDone := make(chan struct{})
 	go outputLoop(opener, output, outDone)
 
 	// Open the input and start the input loop.
-	if *flagReadFile != "" {
-		i, err = dnstap.NewFrameStreamInputFromFilename(*flagReadFile)
+	readType    := strings.ToLower(config.Input.Type)
+	readPath    := config.Input.Path
+
+	if  readType == "file" {
+		i, err = dnstap.NewFrameStreamInputFromFilename(readPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "dnstap: Failed to open input file: %s\n", err)
 			os.Exit(1)
 		}
-		fmt.Fprintf(os.Stderr, "dnstap: opened input file %s\n", *flagReadFile)
-	} else if *flagReadSock != "" {
-		i, err = dnstap.NewFrameStreamSockInputFromPath(*flagReadSock)
+		fmt.Fprintf(os.Stderr, "dnstap: opened input file %s\n", readPath)
+	} else if readType == "sock" {
+		i, err = dnstap.NewFrameStreamSockInputFromPath(readPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "dnstap: Failed to open input socket: %s\n", err)
 			os.Exit(1)
 		}
-		fmt.Fprintf(os.Stderr, "dnstap: opened input socket %s\n", *flagReadSock)
-	} else if *flagReadTcp != "" {
-		l, err := net.Listen("tcp", *flagReadTcp)
+		fmt.Fprintf(os.Stderr, "dnstap: opened input socket %s\n", readPath)
+	} else if readType == "tcp" {
+		l, err := net.Listen("tcp", readPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "dnstap: Failed to listen: %s\n", err)
 			os.Exit(1)

@@ -1,0 +1,64 @@
+## toml config parameter
+## dnstap -c "tomlfilepath"
+## use config file. other args option disable, when this usage
+
+### Input section
+## type             = ("sock"|"file"|"tcp")   :required
+##                     "sock"  --> eq args option -u
+##                     "file"  --> eq args option -r
+##                     "tcp"   --> eq args option -l
+## path             = ("string")              :required
+[Input]
+type = "Sock"
+path = "/var/unbound/dnstap.sock"
+
+### Output section
+## OutputFile && OutputKafka is defined, Error: outputs exactly one of file or kafka
+
+### OutputFile section
+## format           = ("text"|"yml"|"json")   :default --> text
+##                     "text" --> eq args option -q
+##                     "yml"  --> eq args option -y
+##                     "json" --> eq args option -j
+## path             = ("string")              :default --> "" (eq stdout)
+##                     "path" is defined eq args -w "path"
+## append           = (bool)                  :default --> false
+##                     true   --> eq args option -a
+[OutputFile]
+#format = "text"
+#path = "-"
+#append = false
+
+### OutputKafka section
+## is section only supported for toml config, not supported for argments.
+## do to set sarama producer config
+## brokers          = ["string", "string"..]  :required
+## topic            = ("string")              :required
+## key              = ("key")                 :default --> nil
+## sasl             = (bool)                  :default --> false
+## user             = ("string")              :required, if sasl is true
+## password         = ("string")              :required, if sasl is true
+## acks             = (0|1|-1)                :default --> 1
+##                     0 --> doesn't send any response, the TCP ACK is all you get.
+##                     1 --> waits for only the local commit to succeed before responding.
+##                    -1 --> waits for all in-sync replicas to commit before responding.
+## compression      = (0|1|2)                 :default --> 0
+##                     0 --> CompressionNone no compression.
+##                     1 --> CompressionGZIP compression using GZIP
+##                     2 --> CompressionSnappy compression using snappy.
+## max_send_retries = (int)                   :default --> 3
+## flush_interval   = (int)                   :default --> 1000 (ms)
+## debug            = (bool)                  :default --> false
+
+[OutputKafka]
+#brokers = ["localhost:9092"]
+#topic = "test001"
+#key = ""
+#sasl = false
+#user = "user"
+#password = "passwrod"
+#acks = 1
+#compression = 0
+#max_send_retries = 3
+#flush_interval = 1000
+#debug = true
