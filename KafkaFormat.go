@@ -110,7 +110,7 @@ func convertKafkaMessage(m *Message) (kMsg *KafkaMessage) {
         if m.QueryMessage != nil {
                 msg := new(dns.Msg)
                 err := msg.Unpack(m.QueryMessage)
-                if err != nil {
+                if err != nil || len(msg.Question) == 0 {
                         kMsg.QueryName    = "parse failed"
                 } else {
                         kMsg.QueryName    = msg.Question[0].Name
@@ -122,7 +122,7 @@ func convertKafkaMessage(m *Message) (kMsg *KafkaMessage) {
         if m.ResponseMessage != nil {
                 msg := new(dns.Msg)
                 err := msg.Unpack(m.ResponseMessage)
-                if err != nil {
+                if err != nil || len(msg.Question) == 0 {
                         kMsg.QueryName  = "parse failed"
                 } else {
                         kMsg.QueryName         = msg.Question[0].Name
